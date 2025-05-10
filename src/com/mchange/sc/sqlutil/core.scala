@@ -1,7 +1,8 @@
 package com.mchange.sc.sqlutil
 
-import java.sql.{Connection,PreparedStatement,ResultSet,Timestamp,Types}
+import java.sql.{Connection,PreparedStatement,ResultSet,Statement,Timestamp,Types}
 
+import scala.util.Using
 import scala.util.control.NonFatal
 
 trait Creatable:
