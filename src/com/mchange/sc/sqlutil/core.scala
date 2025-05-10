@@ -10,24 +10,19 @@ trait Creatable:
   def create( stmt : Statement ) : Int = stmt.executeUpdate( this.Create )
   def create( conn : Connection ) : Int = Using.resource( conn.createStatement() )( stmt => create(stmt) )
 
-def transact[T]( conn : Connection )( block : Connection => T ) : T = {
-
+def transact[T]( conn : Connection )( block : Connection => T ) : T =
   val origAutoCommit = conn.getAutoCommit()
-
-  try {
-      conn.setAutoCommit(false)
-      val out = block( conn )
-      conn.commit()
-      out
-    } catch {
-      case NonFatal( t ) => {
-        conn.rollback()
-        throw t
-      }
-    } finally {
-      conn.setAutoCommit( origAutoCommit )
-    }
-  }
+  try
+    conn.setAutoCommit(false)
+    val out = block( conn )
+    conn.commit()
+    out
+  catch
+    case NonFatal( t ) =>
+      conn.rollback()
+      throw t
+  finally
+    conn.setAutoCommit( origAutoCommit )
 
 def uniqueResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : T =
   if !rs.next() then
