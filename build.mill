@@ -4,25 +4,38 @@ import mill._
 import mill.scalalib._
 import mill.scalalib.publish._
 
-object Dependency {
+object Common {
+  val scalaVersion   = "3.3.6"
+  val organization   = "com.mchange"
+  val publishVersion = "0.0.2-SNAPSHOT"
+
+  def pomSettings( description : String ) =
+    PomSettings(
+      description = description,
+      organization = Common.organization,
+      url = "https://www.mchange.com/projects/sqlutil-scala",
+      licenses = Seq(License.`Apache-2.0`),
+      versionControl = VersionControl.github("swaldman", "sqlutil-scala"),
+      developers = Seq(
+        Developer("swaldman", "Steve Waldman", "https://github.com/swaldman")
+      )
+    )
 }
 
 object `package` extends RootModule with ScalaModule with PublishModule {
-  override def scalaVersion = "3.3.6"
+  override def scalaVersion   = Common.scalaVersion
+  override def artifactName   = T { "sqlutil-scala" }
+  override def publishVersion = T { Common.publishVersion }
+  override def pomSettings    = T { Common.pomSettings("Scala 3 SQL/JDBC utilities") }
 
-  val organization = "com.mchange"
-  override def artifactName = T{"sqlutil-scala"}
-  override def publishVersion = T{"0.0.2-SNAPSHOT"}
-    override def pomSettings = T {
-      PomSettings(
-        description = "Scala 3 SQL/JDBC utilities",
-        organization = organization,
-        url = "https://www.mchange.com/projects/sqlutil-scala",
-        licenses = Seq(License.`Apache-2.0`),
-        versionControl = VersionControl.github("swaldman", "sqlutil-scala"),
-        developers = Seq(
-          Developer("swaldman", "Steve Waldman", "https://github.com/swaldman")
-        )
-      )
-    }
+  object zio extends ScalaModule with PublishModule {
+    override def scalaVersion   = Common.scalaVersion
+    override def artifactName   = T { "sqlutil-scala-zio"}
+    override def publishVersion = T { Common.publishVersion}
+    override def pomSettings    = T { Common.pomSettings("Scala 3 SQL/JDBC utilities for ZIO effects") }
+
+    def ivyDeps = Agg (
+      ivy"dev.zio::zio:2.1.18"
+    )
+  }
 }
