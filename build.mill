@@ -34,6 +34,7 @@ object `package` extends RootModule with ScalaModule with PublishModule {
     override def publishVersion = T { Common.publishVersion}
     override def pomSettings    = T { Common.pomSettings("Scala 3 SQL/JDBC utilities for ZIO effects") }
 
+    def moduleDeps = Seq(build)
     def ivyDeps = Agg (
       ivy"dev.zio::zio:2.1.18"
     )
