@@ -9,12 +9,16 @@ import java.lang.System // TODO: better logging...
 
 def acquireConnection( ds : DataSource ) : Task[Connection] = ZIO.attemptBlocking( ds.getConnection )
 
-private def _inTransactionZIO[T]( conn : Connection )( transactioningHappyPath : Connection => Task[T]) : Task[T] =
+private def _doTransactionZIO[T]( conn : Connection )( transactioningHappyPath : Connection => Task[T]) : Task[T] =
   val rollback : PartialFunction[Throwable,Task[T]] =
     case NonFatal(t) =>
       ZIO.attemptBlocking( conn.rollback() ) *> ZIO.fail(t)
-  val resetAutocommit = ZIO.attemptBlocking( conn.setAutoCommit(true) ).logError.catchAll( _ => ZIO.unit )
-  transactioningHappyPath(conn).catchSome( rollback ).ensuring( resetAutocommit )
+  def resetAutocommit( origAutocommit : Boolean ) =
+    ZIO.attemptBlocking( conn.setAutoCommit(origAutocommit) ).logError.catchAll( _ => ZIO.unit )
+  for
+    origAutocommit <- ZIO.attemptBlocking( conn.getAutoCommit() )
+    out <- transactioningHappyPath(conn).catchSome( rollback ).ensuring( resetAutocommit(origAutocommit) )
+  yield out
 
 def inTransaction[T]( conn : Connection )( op : Connection => T) : Task[T] =
   val transactioningHappyPath = (cxn : Connection) => ZIO.attemptBlocking:
@@ -22,7 +26,7 @@ def inTransaction[T]( conn : Connection )( op : Connection => T) : Task[T] =
     val out = op(cxn)
     cxn.commit()
     out
-  _inTransactionZIO(conn)(transactioningHappyPath)
+  _doTransactionZIO(conn)(transactioningHappyPath)
 
 def inTransactionZIO[T]( conn : Connection )( op : Connection => Task[T]) : Task[T] =
   val transactioningHappyPath = (cxn : Connection ) =>
@@ -31,7 +35,7 @@ def inTransactionZIO[T]( conn : Connection )( op : Connection => Task[T]) : Task
       out <- op(cxn)
       _ <- ZIO.attemptBlocking( cxn.commit() )
     yield out
-  _inTransactionZIO(conn)(transactioningHappyPath)
+  _doTransactionZIO(conn)(transactioningHappyPath)
 
 def releaseConnection( conn : Connection ) : UIO[Unit] = ZIO.succeed:
   try
