@@ -62,8 +62,6 @@ trait ZMigratory[T <: Schema]:
   def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit
   def hasMetadataTable( conn : Connection ) : Boolean
 
-  def targetDbVersion : Int = LatestSchema.Version
-  
   def dumpFileName( timestamp : String ) : String = AppDbTag + "-dump." + timestamp + ".sql"
 
   def createTimestampExtractingDumpFileRegex() : Regex = (s"""^${AppDbTag}-dump\\.(.+)\\.sql$$""").r
