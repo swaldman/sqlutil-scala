@@ -28,17 +28,6 @@ object `package` extends RootModule with ScalaModule with PublishModule {
   override def publishVersion = T { Common.publishVersion }
   override def pomSettings    = T { Common.pomSettings("Scala 3 SQL/JDBC utilities") }
 
-  object migrate extends ScalaModule with PublishModule {
-    override def scalaVersion   = Common.scalaVersion
-    override def artifactName   = T { "sqlutil-scala-migrate"}
-    override def publishVersion = T { Common.publishVersion}
-    override def pomSettings    = T { Common.pomSettings("Scala 3 SQL/JDBC utilities for migratable database schemas") }
-
-    def moduleDeps = Seq(build)
-    def ivyDeps = Agg (
-      ivy"dev.zio::zio:2.1.18"
-    )
-  }
   object zio extends ScalaModule with PublishModule {
     override def scalaVersion   = Common.scalaVersion
     override def artifactName   = T { "sqlutil-scala-zio"}
@@ -46,8 +35,13 @@ object `package` extends RootModule with ScalaModule with PublishModule {
     override def pomSettings    = T { Common.pomSettings("Scala 3 SQL/JDBC utilities for ZIO effects") }
 
     def moduleDeps = Seq(build)
+
+    val LogadapterScalaVersion = "0.0.1"
     def ivyDeps = Agg (
-      ivy"dev.zio::zio:2.1.18"
+      ivy"dev.zio::zio:2.1.18",
+      ivy"com.mchange::logadapter-scala-mlog:${LogadapterScalaVersion}",
+      ivy"com.mchange::logadapter-scala-zio:${LogadapterScalaVersion}",
+      ivy"com.lihaoyi::os-lib:0.11.5-M9",
     )
   }
 }
