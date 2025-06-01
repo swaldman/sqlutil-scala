@@ -10,9 +10,6 @@ trait Creatable:
   def create( stmt : Statement ) : Int = stmt.executeUpdate( this.Create )
   def create( conn : Connection ) : Int = Using.resource( conn.createStatement() )( stmt => create(stmt) )
 
-trait Schema:
-  def Version : Int
-
 def transact[T]( conn : Connection )( block : Connection => T ) : T =
   val origAutoCommit = conn.getAutoCommit()
   try
