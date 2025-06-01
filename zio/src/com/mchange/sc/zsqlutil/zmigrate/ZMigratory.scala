@@ -37,18 +37,18 @@ trait ZMigratory[T <: Schema]:
 
   import ZMigratory.logAdapter
 
-  val LatestSchema : T
-
   /**
    * Should be overridden a name with no special characters except - or _,
    * e.g. feedletter-pg
    */
   val AppDbTag : String
 
+  val LatestSchema : T
+
   def getRunningAppVersionIfAvailable() : Option[String]
 
   def fetchDbName(conn : Connection) : Task[Option[String]]
-  def fetchDumpDir(conn : Connection) : Task[os.Path]
+  def fetchDumpDir(conn : Connection) : Task[Option[os.Path]]
   def runDump( ds : DataSource, mbDbName : Option[String], dumpFile : os.Path ) : Task[Unit]
   def upMigrate(ds : DataSource, from : Option[Int]) : Task[Unit]
 
@@ -72,7 +72,7 @@ trait ZMigratory[T <: Schema]:
 
   lazy val DumpFileNameRegex = createTimestampExtractingDumpFileRegex()
 
-  def fetchDumpDir( ds : DataSource ) : Task[os.Path] = withConnectionZIO(ds)( fetchDumpDir )
+  def fetchDumpDir( ds : DataSource ) : Task[Option[os.Path]] = withConnectionZIO(ds)( fetchDumpDir )
 
   def extractTimestampFromDumpFileName( dfn : String ) : Option[Instant] =
     DumpFileNameRegex.findFirstMatchIn(dfn)
@@ -98,13 +98,17 @@ trait ZMigratory[T <: Schema]:
     else
       false
 
+  private def unmaybeDumpDir( mbDumpDir : Option[os.Path], failure : =>Throwable ) : Task[os.Path] =
+    mbDumpDir.fold( ZIO.fail( failure ) )( path => ZIO.succeed( path ) )
+
   def dump(ds : DataSource) : Task[os.Path] =
     withConnectionZIO( ds ): conn =>
       for
-        mbDbName <- fetchDbName(conn)
-        dumpDir  <- fetchDumpDir(conn)
-        dumpFile <- prepareDumpFileForInstant(dumpDir, java.time.Instant.now)
-        _        <- runDump( ds, mbDbName, dumpFile )
+        mbDbName  <- fetchDbName(conn)
+        mbDumpDir <- fetchDumpDir(conn)
+        dumpDir   <- unmaybeDumpDir( mbDumpDir, new CannotDump("Unable to find dump directory in configuration.") )
+        dumpFile  <- prepareDumpFileForInstant(dumpDir, java.time.Instant.now)
+        _         <- runDump( ds, mbDbName, dumpFile )
       yield dumpFile
 
   def ensureMetadataTable( conn : Connection ) : Task[Unit] =
@@ -195,7 +199,8 @@ trait ZMigratory[T <: Schema]:
     val safeToTry =
       for
         initialStatus <- dbVersionStatus(ds)
-        dumpDir       <- fetchDumpDir(ds)
+        mbDumpDir     <- fetchDumpDir(ds)
+        dumpDir       <- unmaybeDumpDir( mbDumpDir, new CannotUpMigrate("Unable to find dump directory to verify existence of a recent dump prior to cautious upmigration." ) )
         dumped        <- lastHourDumpFileExists(dumpDir)
       yield
         initialStatus == DbVersionStatus.SchemaMetadataNotFound || dumped
