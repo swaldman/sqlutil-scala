@@ -1,4 +1,4 @@
-package com.mchange.v2.sqlutil.migrate
+package com.mchange.sc.sqlutil.migrate
 
 object DbVersionStatus:
   case class Current( version : Int ) extends DbVersionStatus
