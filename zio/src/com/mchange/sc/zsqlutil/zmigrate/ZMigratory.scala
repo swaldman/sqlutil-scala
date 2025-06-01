@@ -16,7 +16,7 @@ import com.mchange.sc.sqlutil.migrate.*
 import com.mchange.sc.zsqlutil.*
 import com.mchange.sc.zsqlutil.LoggingApi.*
 
-object ZMigratory:
+object ZMigratory extends SelfLogging:
   private val DumpTimestampFormatter = java.time.format.DateTimeFormatter.ISO_INSTANT
   trait Postgres[T <: Schema] extends ZMigratory[T]:
     def fetchDbName(conn : Connection) : Task[String] =
@@ -29,7 +29,9 @@ object ZMigratory:
         val parsedCommand = List("pg_dump", dbName)
         os.proc( parsedCommand ).call( stdout = dumpFile )
 
-trait ZMigratory[T <: Schema] extends SelfLogging:
+trait ZMigratory[T <: Schema]:
+
+  import ZMigratory.logAdapter
 
   val LatestSchema : T
   def targetDbVersion : Int = LatestSchema.Version
