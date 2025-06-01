@@ -19,22 +19,25 @@ import com.mchange.sc.zsqlutil.LoggingApi.*
 object ZMigratory extends SelfLogging:
   private val DumpTimestampFormatter = java.time.format.DateTimeFormatter.ISO_INSTANT
   trait Postgres[T <: Schema] extends ZMigratory[T]:
-    def fetchDbName(conn : Connection) : Task[String] =
+    override def fetchDbName(conn : Connection) : Task[Option[String]] =
       ZIO.attemptBlocking:
         Using.resource(conn.createStatement()): stmt =>
           Using.resource(stmt.executeQuery("SELECT current_database()")): rs =>
-            uniqueResult("select-current-database-name", rs)( _.getString(1) )
-    def runDump( ds : DataSource, dbName : String, dumpFile : os.Path ) : Task[Unit] =
-      ZIO.attemptBlocking:
-        val parsedCommand = List("pg_dump", dbName)
-        os.proc( parsedCommand ).call( stdout = dumpFile )
+            uniqueResult("select-current-database-name", rs)( rs => Some( rs.getString(1) ) )
+    override def runDump( ds : DataSource, mbDbName : Option[String], dumpFile : os.Path ) : Task[Unit] =
+      mbDbName match
+        case Some( dbName ) =>
+          ZIO.attemptBlocking:
+            val parsedCommand = List("pg_dump", dbName)
+            os.proc( parsedCommand ).call( stdout = dumpFile )
+        case None =>
+          throw new CannotDump(s"Cannot determine dbName, unable to dump the database without the dbname.")
 
 trait ZMigratory[T <: Schema]:
 
   import ZMigratory.logAdapter
 
   val LatestSchema : T
-  def targetDbVersion : Int = LatestSchema.Version
 
   /**
    * Should be overridden a name with no special characters except - or _,
@@ -42,15 +45,11 @@ trait ZMigratory[T <: Schema]:
    */
   val AppDbTag : String
 
-  def dumpFileName( timestamp : String ) : String = AppDbTag + "-dump." + timestamp + ".sql"
-
-  def createTimestampExtractingDumpFileRegex() : Regex = (s"""^${AppDbTag}-dump\\.(.+)\\.sql$$""").r
-
   def getRunningAppVersionIfAvailable() : Option[String]
 
-  def fetchDbName(conn : Connection) : Task[String]
+  def fetchDbName(conn : Connection) : Task[Option[String]]
   def fetchDumpDir(conn : Connection) : Task[os.Path]
-  def runDump( ds : DataSource, dbName : String, dumpFile : os.Path ) : Task[Unit]
+  def runDump( ds : DataSource, mbDbName : Option[String], dumpFile : os.Path ) : Task[Unit]
   def upMigrate(ds : DataSource, from : Option[Int]) : Task[Unit]
 
   /**
@@ -58,8 +57,17 @@ trait ZMigratory[T <: Schema]:
     * Absence of this table will be taken to mean no version of the schema has been initialized.
     */
   val MetadataTableName : String
+  def fetchMetadataValue( conn : Connection, key : MetadataKey )             : Option[String]
+  def insertMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit
+  def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit
+  def hasMetadataTable( conn : Connection ) : Boolean
 
-  def fetchMetadataValue( conn : Connection, key : MetadataKey )  : Option[String]
+  def targetDbVersion : Int = LatestSchema.Version
+  
+  def dumpFileName( timestamp : String ) : String = AppDbTag + "-dump." + timestamp + ".sql"
+
+  def createTimestampExtractingDumpFileRegex() : Regex = (s"""^${AppDbTag}-dump\\.(.+)\\.sql$$""").r
+
   def zfetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] = ZIO.attemptBlocking( fetchMetadataValue( conn, key ) )
 
   lazy val DumpFileNameRegex = createTimestampExtractingDumpFileRegex()
@@ -93,11 +101,15 @@ trait ZMigratory[T <: Schema]:
   def dump(ds : DataSource) : Task[os.Path] =
     withConnectionZIO( ds ): conn =>
       for
-        dbName   <- fetchDbName(conn)
+        mbDbName <- fetchDbName(conn)
         dumpDir  <- fetchDumpDir(conn)
         dumpFile <- prepareDumpFileForInstant(dumpDir, java.time.Instant.now)
-        _        <- runDump( ds, dbName, dumpFile )
+        _        <- runDump( ds, mbDbName, dumpFile )
       yield dumpFile
+
+  def ensureMetadataTable( conn : Connection ) : Task[Unit] =
+    ZIO.attemptBlocking:
+      if !hasMetadataTable(conn) then throw new DbNotInitialized("Please initialize the database. (No metadata table found.)")
 
   def dbVersionStatus(ds : DataSource) : Task[DbVersionStatus] =
     withConnectionZIO( ds ): conn =>
@@ -129,6 +141,34 @@ trait ZMigratory[T <: Schema]:
               WARNING.log("Exception while connecting to database.", t)
               ZIO.succeed( DbVersionStatus.ConnectionFailed )
   end dbVersionStatus
+
+  def ensureDb( ds : DataSource ) : Task[Unit] =
+    withConnectionZIO( ds ): conn =>
+      for
+        _ <- ensureMetadataTable(conn)
+        mbSchemaVersion <- zfetchMetadataValue(conn, MetadataKey.SchemaVersion).map( option => option.map( _.toInt ) )
+        mbAppVersion <- zfetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
+      yield
+        mbSchemaVersion match
+          case Some( schemaVersion ) =>
+            if schemaVersion > LatestSchema.Version then
+              throw new MoreRecentApplicationVersionRequired(
+                s"The database schema version is ${schemaVersion}. " +
+                mbAppVersion.fold("")( appVersion => s"It was created by app version '${appVersion}'. " ) +
+                s"The latest version known by this version of the app is ${LatestSchema.Version}. " +
+                s"You are running app version '${BuildInfo.version}'."
+              )
+            else if schemaVersion < LatestSchema.Version then
+              throw new SchemaMigrationRequired(
+                s"The database schema version is ${schemaVersion}. " +
+                mbAppVersion.fold("")( appVersion => s"It was created by app version '${appVersion}'. " ) +
+                s"The current schema this version of the app (${BuildInfo.version}) is ${LatestSchema.Version}. " +
+                "Please migrate."
+              )
+            // else schemaVersion == LatestSchema.version and we're good
+          case None =>
+            throw new DbNotInitialized("Please initialize the database.")
+  end ensureDb
 
   def migrate(ds : DataSource) : Task[Unit] =
     def handleStatus( status : DbVersionStatus ) : Task[Unit] =
