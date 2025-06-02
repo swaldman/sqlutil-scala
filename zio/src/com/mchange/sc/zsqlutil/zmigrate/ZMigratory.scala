@@ -24,6 +24,9 @@ object ZMigratory extends SelfLogging:
         Using.resource(conn.createStatement()): stmt =>
           Using.resource(stmt.executeQuery("SELECT current_database()")): rs =>
             uniqueResult("select-current-database-name", rs)( rs => Some( rs.getString(1) ) )
+
+    // see https://stackoverflow.com/questions/29648309/pg-dump-postgres-database-from-remote-server-when-port-5432-is-blocked
+    // for some variations in runDump(...) with postgres
     def simpleLocalRunDump( ds : DataSource, mbDbName : Option[String], dumpFile : os.Path ) : Task[Unit] =
       mbDbName match
         case Some( dbName ) =>
