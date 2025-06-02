@@ -24,7 +24,7 @@ object ZMigratory extends SelfLogging:
         Using.resource(conn.createStatement()): stmt =>
           Using.resource(stmt.executeQuery("SELECT current_database()")): rs =>
             uniqueResult("select-current-database-name", rs)( rs => Some( rs.getString(1) ) )
-    override def runDump( ds : DataSource, mbDbName : Option[String], dumpFile : os.Path ) : Task[Unit] =
+    def simpleLocalRunDump( ds : DataSource, mbDbName : Option[String], dumpFile : os.Path ) : Task[Unit] =
       mbDbName match
         case Some( dbName ) =>
           ZIO.attemptBlocking:
