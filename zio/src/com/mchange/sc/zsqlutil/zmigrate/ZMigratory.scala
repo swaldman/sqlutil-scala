@@ -44,7 +44,7 @@ trait ZMigratory[T <: Schema]:
    * Should be overridden a name with no special characters except - or _,
    * e.g. feedletter-pg
    */
-  val AppDbTag : String
+  val DumpFileAppDbTag : String
 
   val LatestSchema : T
 
@@ -65,9 +65,9 @@ trait ZMigratory[T <: Schema]:
   def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit
   def hasMetadataTable( conn : Connection ) : Boolean
 
-  def dumpFileName( timestamp : String ) : String = AppDbTag + "-dump." + timestamp + ".sql"
+  def dumpFileName( timestamp : String ) : String = DumpFileAppDbTag + "-dump." + timestamp + ".sql"
 
-  def createTimestampExtractingDumpFileRegex() : Regex = (s"""^${AppDbTag}-dump\\.(.+)\\.sql$$""").r
+  def createTimestampExtractingDumpFileRegex() : Regex = (s"""^${DumpFileAppDbTag}-dump\\.(.+)\\.sql$$""").r
 
   def zfetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] = ZIO.attemptBlocking( fetchMetadataValue( conn, key ) )
 
