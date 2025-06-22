@@ -1,3 +1,4 @@
+//| mill-version: 0.12.14
 package build
 
 import mill._
@@ -41,7 +42,7 @@ object `package` extends RootModule with ScalaModule with PublishModule {
       ivy"dev.zio::zio:2.1.18",
       ivy"com.mchange::logadapter-scala-mlog:${LogadapterScalaVersion}",
       ivy"com.mchange::logadapter-scala-zio:${LogadapterScalaVersion}",
-      ivy"com.lihaoyi::os-lib:0.11.5-M9",
+      ivy"com.lihaoyi::os-lib:0.11.4",
     )
   }
 }
