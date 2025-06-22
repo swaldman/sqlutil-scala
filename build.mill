@@ -8,7 +8,7 @@ import mill.scalalib.publish._
 object Common {
   val scalaVersion   = "3.3.6"
   val organization   = "com.mchange"
-  val publishVersion = "0.0.4-SNAPSHOT"
+  val publishVersion = "0.0.4"
 
   def pomSettings( description : String ) =
     PomSettings(
