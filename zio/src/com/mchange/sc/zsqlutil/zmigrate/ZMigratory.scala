@@ -40,6 +40,8 @@ trait ZMigratory[T <: Schema]:
 
   import ZMigratory.logAdapter
 
+  // begin abstract members
+
   /**
    * Should be overridden a name with no special characters except - or _,
    * e.g. feedletter-pg
@@ -64,6 +66,8 @@ trait ZMigratory[T <: Schema]:
   def insertMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit
   def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit
   def hasMetadataTable( conn : Connection ) : Boolean
+
+  // end abstract members
 
   def dumpFileName( timestamp : String ) : String = DumpFileAppDbTag + "-dump." + timestamp + ".sql"
 
