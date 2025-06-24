@@ -127,7 +127,12 @@ trait ZMigratory[T <: Schema]:
       if !hasMetadataTable(conn) then throw new DbNotInitialized("Please initialize the database. (No metadata table found.)")
 
   def dbVersionStatus(conn : Connection) : Task[DbVersionStatus] =
-    val okeyDokeyIsh =
+    val checkMetadata : Task[Boolean] =
+      ZIO.attemptBlocking:
+        val dbmd = conn.getMetaData()
+        val rs = dbmd.getTables(null,null,MetadataTableName,null)
+        rs.next()
+    val withMetadata : Task[DbVersionStatus] =
       for
         mbDbVersion <- zfetchMetadataValue(conn, MetadataKey.SchemaVersion)
         mbCreatorAppVersion <- zfetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
@@ -141,19 +146,15 @@ trait ZMigratory[T <: Schema]:
         catch
           case nfe : NumberFormatException =>
             DbVersionStatus.UnexpectedVersion( mbDbVersion, mbCreatorAppVersion, getRunningAppVersionIfAvailable(), Some(LatestSchema.Version.toString()) )
-    okeyDokeyIsh.catchSome:
+    val happyPath =
+      for
+         hasMetadata <- checkMetadata
+         status      <- if hasMetadata then withMetadata else ZIO.succeed( DbVersionStatus.SchemaMetadataNotFound )
+      yield status
+    happyPath.catchSome:
       case sqle : SQLException =>
-        val dbmd = conn.getMetaData()
-        try
-          val rs = dbmd.getTables(null,null,MetadataTableName,null)
-          if !rs.next() then // the metadata table does not exist
-            ZIO.succeed( DbVersionStatus.SchemaMetadataNotFound )
-          else
-            ZIO.succeed( DbVersionStatus.SchemaMetadataDisordered(s"Metadata table found, but an Exception occurred while accessing it: ${sqle.toString()}") )
-        catch
-          case t : SQLException =>
-            WARNING.log("Exception while connecting to database.", t)
-            ZIO.succeed( DbVersionStatus.ConnectionFailed )
+        WARNING.log("Exception while connecting to database.", sqle)
+        ZIO.succeed( DbVersionStatus.ConnectionFailed )
   end dbVersionStatus
 
   // def dbVersionStatus(ds : DataSource) : Task[DbVersionStatus] = withConnectionZIO( ds )( _dbVersionStatus )
@@ -207,8 +208,6 @@ trait ZMigratory[T <: Schema]:
       _      <- handleStatus( status )
     yield ()
 
-  def migrate(ds : DataSource) : Task[Unit] = inTransactionZIO( ds.getConnection() )( _migrate )  
-
   private def _cautiousMigrate( conn : Connection ) : Task[Unit] =
     for
       initialStatus <- dbVersionStatus(conn)
@@ -219,4 +218,10 @@ trait ZMigratory[T <: Schema]:
       _             <- if safe then _migrate(conn) else ZIO.fail( new NoRecentDump("Please dump the database prior to migrating, no recent dump file found.") )
     yield()
 
-  def cautiousMigrate( ds : DataSource ) : Task[Unit] = inTransactionZIO( ds.getConnection() )( _cautiousMigrate )  
+  def migrate(conn : Connection) : Task[Unit] = inTransactionZIO( conn )( _migrate )
+
+  def migrate(ds : DataSource) : Task[Unit] = migrate( ds.getConnection() )
+
+  def cautiousMigrate( conn : Connection ) : Task[Unit] = inTransactionZIO( conn )( _cautiousMigrate )
+
+  def cautiousMigrate( ds : DataSource ) : Task[Unit] = cautiousMigrate( ds.getConnection() )
