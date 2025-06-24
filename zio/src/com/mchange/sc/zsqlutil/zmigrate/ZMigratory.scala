@@ -55,7 +55,13 @@ trait ZMigratory[T <: Schema]:
   def fetchDbName(conn : Connection) : Task[Option[String]]
   def fetchDumpDir(conn : Connection) : Task[Option[os.Path]]
   def runDump( ds : DataSource, mbDbName : Option[String], dumpFile : os.Path ) : Task[Unit]
-  def upMigrate(ds : DataSource, from : Option[Int]) : Task[Unit]
+
+  /**
+    * DO NOT wrap in a JDBC transaction.
+    * The migrate function will do that, enabling upgrades
+    * through multiple version to constite one transaction.
+    */
+  def upMigrate(conn : Connection, from : Option[Int]) : Task[Unit]
 
   /**
     * The initial version of the database should include a "metadata" table which maps String keys to String values.
@@ -77,7 +83,7 @@ trait ZMigratory[T <: Schema]:
 
   lazy val DumpFileNameRegex = createTimestampExtractingDumpFileRegex()
 
-  def fetchDumpDir( ds : DataSource ) : Task[Option[os.Path]] = withConnectionZIO(ds)( fetchDumpDir )
+  // def fetchDumpDir( ds : DataSource ) : Task[Option[os.Path]] = withConnectionZIO(ds)( fetchDumpDir )
 
   def extractTimestampFromDumpFileName( dfn : String ) : Option[Instant] =
     DumpFileNameRegex.findFirstMatchIn(dfn)
@@ -120,36 +126,37 @@ trait ZMigratory[T <: Schema]:
     ZIO.attemptBlocking:
       if !hasMetadataTable(conn) then throw new DbNotInitialized("Please initialize the database. (No metadata table found.)")
 
-  def dbVersionStatus(ds : DataSource) : Task[DbVersionStatus] =
-    withConnectionZIO( ds ): conn =>
-      val okeyDokeyIsh =
-        for
-          mbDbVersion <- zfetchMetadataValue(conn, MetadataKey.SchemaVersion)
-          mbCreatorAppVersion <- zfetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
-        yield
-          try
-            mbDbVersion.map( _.toInt ) match
-              case Some( version ) if version == LatestSchema.Version => DbVersionStatus.Current( version )
-              case Some( version ) if version < LatestSchema.Version => DbVersionStatus.OutOfDate( version, LatestSchema.Version )
-              case Some( version ) => DbVersionStatus.UnexpectedVersion( Some(version.toString), mbCreatorAppVersion, getRunningAppVersionIfAvailable(), Some(LatestSchema.Version.toString()) )
-              case None => DbVersionStatus.SchemaMetadataDisordered( s"Expected key '${MetadataKey.SchemaVersion}' was not found in schema metadata!" )
-          catch
-            case nfe : NumberFormatException =>
-              DbVersionStatus.UnexpectedVersion( mbDbVersion, mbCreatorAppVersion, getRunningAppVersionIfAvailable(), Some(LatestSchema.Version.toString()) )
-      okeyDokeyIsh.catchSome:
-        case sqle : SQLException =>
-          val dbmd = conn.getMetaData()
-          try
-            val rs = dbmd.getTables(null,null,MetadataTableName,null)
-            if !rs.next() then // the metadata table does not exist
-              ZIO.succeed( DbVersionStatus.SchemaMetadataNotFound )
-            else
-              ZIO.succeed( DbVersionStatus.SchemaMetadataDisordered(s"Metadata table found, but an Exception occurred while accessing it: ${sqle.toString()}") )
-          catch
-            case t : SQLException =>
-              WARNING.log("Exception while connecting to database.", t)
-              ZIO.succeed( DbVersionStatus.ConnectionFailed )
+  def dbVersionStatus(conn : Connection) : Task[DbVersionStatus] =
+    val okeyDokeyIsh =
+      for
+        mbDbVersion <- zfetchMetadataValue(conn, MetadataKey.SchemaVersion)
+        mbCreatorAppVersion <- zfetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
+      yield
+        try
+          mbDbVersion.map( _.toInt ) match
+            case Some( version ) if version == LatestSchema.Version => DbVersionStatus.Current( version )
+            case Some( version ) if version < LatestSchema.Version => DbVersionStatus.OutOfDate( version, LatestSchema.Version )
+            case Some( version ) => DbVersionStatus.UnexpectedVersion( Some(version.toString), mbCreatorAppVersion, getRunningAppVersionIfAvailable(), Some(LatestSchema.Version.toString()) )
+            case None => DbVersionStatus.SchemaMetadataDisordered( s"Expected key '${MetadataKey.SchemaVersion}' was not found in schema metadata!" )
+        catch
+          case nfe : NumberFormatException =>
+            DbVersionStatus.UnexpectedVersion( mbDbVersion, mbCreatorAppVersion, getRunningAppVersionIfAvailable(), Some(LatestSchema.Version.toString()) )
+    okeyDokeyIsh.catchSome:
+      case sqle : SQLException =>
+        val dbmd = conn.getMetaData()
+        try
+          val rs = dbmd.getTables(null,null,MetadataTableName,null)
+          if !rs.next() then // the metadata table does not exist
+            ZIO.succeed( DbVersionStatus.SchemaMetadataNotFound )
+          else
+            ZIO.succeed( DbVersionStatus.SchemaMetadataDisordered(s"Metadata table found, but an Exception occurred while accessing it: ${sqle.toString()}") )
+        catch
+          case t : SQLException =>
+            WARNING.log("Exception while connecting to database.", t)
+            ZIO.succeed( DbVersionStatus.ConnectionFailed )
   end dbVersionStatus
+
+  // def dbVersionStatus(ds : DataSource) : Task[DbVersionStatus] = withConnectionZIO( ds )( _dbVersionStatus )
 
   def ensureDb( ds : DataSource ) : Task[Unit] =
     withConnectionZIO( ds ): conn =>
@@ -179,7 +186,7 @@ trait ZMigratory[T <: Schema]:
             throw new DbNotInitialized("Please initialize the database.")
   end ensureDb
 
-  def migrate(ds : DataSource) : Task[Unit] =
+  private def _migrate(conn : Connection) : Task[Unit] =
     def handleStatus( status : DbVersionStatus ) : Task[Unit] =
       TRACE.log( s"handleStatus( ${status} )" )
       status match
@@ -188,31 +195,28 @@ trait ZMigratory[T <: Schema]:
           ZIO.succeed( () )
         case DbVersionStatus.OutOfDate( schemaVersion, requiredVersion ) =>
           assert( schemaVersion < requiredVersion, s"An out-of-date scheme should have schema version (${schemaVersion}) < required version (${requiredVersion})" )
-          INFO.log( s"Up-migrating from schema version ${schemaVersion})" )
-          upMigrate( ds, Some( schemaVersion ) ) *> migrate( ds )
+          INFO.log( s"Up-migrating from schema version ${schemaVersion}" )
+          upMigrate( conn, Some( schemaVersion ) ) *> _migrate( conn )
         case DbVersionStatus.SchemaMetadataNotFound => // uninitialized db, we presume
           INFO.log( s"Initializing new schema")
-          upMigrate( ds, None ) *> migrate( ds )
+          upMigrate( conn, None ) *> _migrate( conn )
         case other =>
           throw new CannotUpMigrate( s"""${other}: ${other.errMessage.getOrElse("<no message>")}""" ) // we should never see <no message>
     for
-      status <- dbVersionStatus( ds )
+      status <- dbVersionStatus( conn )
       _      <- handleStatus( status )
     yield ()
 
-  def cautiousMigrate( ds : DataSource ) : Task[Unit] =
-    val safeToTry =
-      for
-        initialStatus <- dbVersionStatus(ds)
-        mbDumpDir     <- fetchDumpDir(ds)
-        dumpDir       <- unmaybeDumpDir( mbDumpDir, new CannotUpMigrate("Unable to find dump directory to verify existence of a recent dump prior to cautious upmigration." ) )
-        dumped        <- lastHourDumpFileExists(dumpDir)
-      yield
-        initialStatus == DbVersionStatus.SchemaMetadataNotFound || dumped
+  def migrate(ds : DataSource) : Task[Unit] = inTransactionZIO( ds.getConnection() )( _migrate )  
 
-    safeToTry.flatMap: safe =>
-      if safe then
-        migrate(ds)
-      else
-        ZIO.fail( new NoRecentDump("Please dump the database prior to migrating, no recent dump file found.") )
+  private def _cautiousMigrate( conn : Connection ) : Task[Unit] =
+    for
+      initialStatus <- dbVersionStatus(conn)
+      mbDumpDir     <- fetchDumpDir(conn)
+      dumpDir       <- unmaybeDumpDir( mbDumpDir, new CannotUpMigrate("Unable to find dump directory to verify existence of a recent dump prior to cautious upmigration." ) )
+      dumped        <- lastHourDumpFileExists(dumpDir)
+      safe          =  (initialStatus == DbVersionStatus.SchemaMetadataNotFound || dumped)
+      _             <- if safe then _migrate(conn) else ZIO.fail( new NoRecentDump("Please dump the database prior to migrating, no recent dump file found.") )
+    yield()
 
+  def cautiousMigrate( ds : DataSource ) : Task[Unit] = inTransactionZIO( ds.getConnection() )( _cautiousMigrate )  
