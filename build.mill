@@ -8,7 +8,7 @@ import mill.scalalib.publish._
 object Common {
   val scalaVersion   = "3.3.6"
   val organization   = "com.mchange"
-  val publishVersion = "0.0.5-SNAPSHOT"
+  val publishVersion = "0.0.5"
 
   def pomSettings( description : String ) =
     PomSettings(
@@ -23,7 +23,7 @@ object Common {
     )
 }
 
-object `package` extends RootModule with ScalaModule with PublishModule {
+object `package` extends RootModule with ScalaModule with SonatypeCentralPublishModule {
   override def scalaVersion   = Common.scalaVersion
   override def artifactName   = T { "sqlutil-scala" }
   override def publishVersion = T { Common.publishVersion }
