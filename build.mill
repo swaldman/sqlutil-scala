@@ -39,7 +39,7 @@ object `package` extends RootModule with ScalaModule with PublishModule {
 
     val LogadapterScalaVersion = "0.0.1"
     def ivyDeps = Agg (
-      ivy"dev.zio::zio:2.1.18",
+      ivy"dev.zio::zio:2.1.19",
       ivy"com.mchange::logadapter-scala-mlog:${LogadapterScalaVersion}",
       ivy"com.mchange::logadapter-scala-zio:${LogadapterScalaVersion}",
       ivy"com.lihaoyi::os-lib:0.11.4",
