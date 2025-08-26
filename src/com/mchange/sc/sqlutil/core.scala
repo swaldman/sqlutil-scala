@@ -24,7 +24,7 @@ def transact[T]( conn : Connection )( block : Connection => T ) : T =
   finally
     conn.setAutoCommit( origAutoCommit )
 
-@deprecated("User version with ResultSet as last arglist.")
+@deprecated("Use version with ResultSet as last arglist.")
 def uniqueResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : T =
   uniqueResult( queryDesc )( materialize )( rs )
 
@@ -38,7 +38,7 @@ def uniqueResult[T]( queryDesc : String )( materialize : ResultSet => T )( rs : 
     else
       out
 
-@deprecated("User version with ResultSet as last arglist.")
+@deprecated("Use version with ResultSet as last arglist.")
 def zeroOrOneResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : Option[T] =
   zeroOrOneResult( queryDesc )( materialize )( rs )
 
@@ -90,15 +90,21 @@ def setLongOptional( ps : PreparedStatement, position : Int, sqlType : Int, valu
     case Some( l ) => ps.setLong(position, l)
     case None      => ps.setNull( position, sqlType )
 
-def toSet[T]( rs : ResultSet )( extract : ResultSet => T ) : Set[T] =
+def toSet[T]( extract : ResultSet => T )( rs : ResultSet ) : Set[T] =
   val builder = Set.newBuilder[T]
   while rs.next() do
     builder += extract(rs)
   builder.result()
 
-def toSeq[T]( rs : ResultSet )( extract : ResultSet => T ) : Seq[T] =
+@deprecated("Use version with ResultSet as last arglist.")
+def toSet[T]( rs : ResultSet )( extract : ResultSet => T ) : Set[T] = toSet( extract )( rs )
+
+def toSeq[T]( extract : ResultSet => T )( rs : ResultSet ) : Seq[T] =
   val builder = Seq.newBuilder[T]
   while rs.next() do
     builder += extract(rs)
   builder.result()
+
+@deprecated("Use version with ResultSet as last arglist.")
+def toSeq[T]( rs : ResultSet )( extract : ResultSet => T ) : Seq[T] = toSeq( extract )( rs )
 
