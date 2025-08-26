@@ -1,16 +1,17 @@
-//| mill-version: 0.12.14
+//| mill-version: 1.0.3
+//| mill-jvm-version: 17
+//+---------------------
+
 package build
 
-import mill._
-import mill.scalalib._
-import mill.scalalib.publish._
+import mill.*, scalalib.*, publish.*
 
-object Common {
+object Common:
   val scalaVersion   = "3.3.6"
   val organization   = "com.mchange"
-  val publishVersion = "0.0.5"
+  val publishVersion = "0.0.6-SNAPSHOT"
 
-  def pomSettings( description : String ) =
+  def pomSettings( description : String ) : PomSettings =
     PomSettings(
       description = description,
       organization = Common.organization,
@@ -21,28 +22,25 @@ object Common {
         Developer("swaldman", "Steve Waldman", "https://github.com/swaldman")
       )
     )
-}
 
-object `package` extends RootModule with ScalaModule with SonatypeCentralPublishModule {
+object `package` extends ScalaModule with SonatypeCentralPublishModule:
   override def scalaVersion   = Common.scalaVersion
-  override def artifactName   = T { "sqlutil-scala" }
-  override def publishVersion = T { Common.publishVersion }
-  override def pomSettings    = T { Common.pomSettings("Scala 3 SQL/JDBC utilities") }
+  override def artifactName   = Task { "sqlutil-scala" }
+  override def publishVersion = Task { Common.publishVersion }
+  override def pomSettings    = Task { Common.pomSettings("Scala 3 SQL/JDBC utilities") }
 
-  object zio extends ScalaModule with PublishModule {
+  object zio extends ScalaModule with PublishModule:
     override def scalaVersion   = Common.scalaVersion
-    override def artifactName   = T { "sqlutil-scala-zio"}
-    override def publishVersion = T { Common.publishVersion}
-    override def pomSettings    = T { Common.pomSettings("Scala 3 SQL/JDBC utilities for ZIO effects") }
+    override def artifactName   = Task { "sqlutil-scala-zio"}
+    override def publishVersion = Task { Common.publishVersion}
+    override def pomSettings    = Task { Common.pomSettings("Scala 3 SQL/JDBC utilities for ZIO effects") }
 
     def moduleDeps = Seq(build)
 
-    val LogadapterScalaVersion = "0.0.1"
-    def ivyDeps = Agg (
-      ivy"dev.zio::zio:2.1.19",
-      ivy"com.mchange::logadapter-scala-mlog:${LogadapterScalaVersion}",
-      ivy"com.mchange::logadapter-scala-zio:${LogadapterScalaVersion}",
-      ivy"com.lihaoyi::os-lib:0.11.4",
+    val LogadapterScalaVersion = "0.0.2-SNAPSHOT"
+    def mvnDeps = Seq (
+      mvn"dev.zio::zio:2.1.19",
+      mvn"com.mchange::logadapter-scala-mlog:${LogadapterScalaVersion}",
+      mvn"com.mchange::logadapter-scala-zio:${LogadapterScalaVersion}",
+      mvn"com.lihaoyi::os-lib:0.11.4",
     )
-  }
-}
