@@ -24,7 +24,11 @@ def transact[T]( conn : Connection )( block : Connection => T ) : T =
   finally
     conn.setAutoCommit( origAutoCommit )
 
+@deprecated("User version with ResultSet as last arglist.")
 def uniqueResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : T =
+  uniqueResult( queryDesc )( materialize )( rs )
+
+def uniqueResult[T]( queryDesc : String )( materialize : ResultSet => T )( rs : ResultSet ) : T =
   if !rs.next() then
     throw new UnexpectedlyEmptyResultSet(s"Expected a value for ${queryDesc}, none found.")
   else
@@ -34,7 +38,11 @@ def uniqueResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultS
     else
       out
 
+@deprecated("User version with ResultSet as last arglist.")
 def zeroOrOneResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : Option[T] =
+  zeroOrOneResult( queryDesc )( materialize )( rs )
+
+def zeroOrOneResult[T]( queryDesc : String )( materialize : ResultSet => T )( rs : ResultSet ) : Option[T] =
   if !rs.next() then
     None
   else
