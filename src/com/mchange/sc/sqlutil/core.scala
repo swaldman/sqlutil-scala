@@ -80,10 +80,20 @@ def setStringOptional( ps : PreparedStatement, position : Int, sqlType : Int, va
     case Some( s ) => ps.setString(position, s)
     case None      => ps.setNull( position, sqlType )
 
+def setBooleanOptional( ps : PreparedStatement, position : Int, value : Option[Boolean] ) =
+  value match
+    case Some( b ) => ps.setBoolean(position, b)
+    case None       => ps.setNull( position, Types.BOOLEAN )
+
 def setTimestampOptional( ps : PreparedStatement, position : Int, value : Option[Timestamp] ) =
   value match
     case Some( ts ) => ps.setTimestamp(position, ts)
     case None       => ps.setNull( position, Types.TIMESTAMP )
+
+def setIntOptional( ps : PreparedStatement, position : Int, sqlType : Int, value : Option[Int] ) =
+  value match
+    case Some( i ) => ps.setInt(position, i)
+    case None      => ps.setNull( position, sqlType )
 
 def setLongOptional( ps : PreparedStatement, position : Int, sqlType : Int, value : Option[Long] ) =
   value match
