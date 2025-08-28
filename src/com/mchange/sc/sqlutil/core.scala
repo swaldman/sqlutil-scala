@@ -74,6 +74,13 @@ def setMaybeString( sqlType : Int )( ps : PreparedStatement, index : Int, mbValu
   mbValue.fold( ps.setNull( index, sqlType ) )( value => ps.setString( index, value ) )
 }
 
+def getOptionBooleanAtPosition( rs : ResultSet, position : Int ) : Option[Boolean] =
+  val outIfNotNull = rs.getBoolean(position)
+  if rs.wasNull then None else Some( outIfNotNull )
+
+def getOptionIntAtPosition( rs : ResultSet, position : Int ) : Option[Int] =
+  val outIfNotNull = rs.getInt(position)
+  if rs.wasNull then None else Some( outIfNotNull )
 
 def setStringOptional( ps : PreparedStatement, position : Int, sqlType : Int, value : Option[String] ) =
   value match
